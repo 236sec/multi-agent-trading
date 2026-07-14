@@ -8,7 +8,7 @@ from trading.config import get_settings
 
 settings = get_settings()
 engine = create_async_engine(
-    settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+    settings.database_url,
     echo=False,
     connect_args={
         "server_settings": {"timezone": "UTC"},

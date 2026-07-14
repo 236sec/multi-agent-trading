@@ -32,7 +32,7 @@ class BrokerConfig(BaseSettings):
 
 class Settings(BaseSettings):
     # From .env
-    database_url: str = "postgresql://localhost:5432/trading"
+    database_url: str = "postgresql+asyncpg://trading:trading@localhost:5432/trading"
     webull_api_key: Optional[str] = None
     webull_api_secret: Optional[str] = None
     webull_account_id: Optional[str] = None
