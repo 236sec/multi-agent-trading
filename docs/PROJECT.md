@@ -65,3 +65,48 @@ uv run trading db --help            # shows seed + init commands
 - `backend/alembic/env.py`
 - `backend/alembic.ini`
 - `backend/alembic/versions/001_initial_schema.py`
+
+## 1.3 — FeatureEngine ✅
+
+**Completed:** 2026-07-14
+
+### What was done
+- Added deps: `pandas>=2.0.0`, `numpy>=1.24.0`, `pytest>=8.0.0` (dev)
+- Created `backend/src/trading/features/` package with:
+  - `engine.py` — `FeatureEngine` class: `compute(ohlcv_df) → features_df`, `list_features()`, `validate_features()`
+  - `__init__.py` — exports FeatureEngine
+- 21 technical indicators computed from OHLCV: returns (4), SMA ratios (4), EMA ratios (2), RSI, MACD (3), ATR normalized, volume profile (3), annualized volatility (3)
+- Core indicators (SMA, EMA, MACD, RSI, ATR) delegate to the ``ta`` library for correct financial formulas; returns, volume ratios, and volatility use pandas/numpy
+- Null/missing value handling: `min_periods` on all rolling windows propagates NaN safely; `validate_features()` rejects DataFrames with NaN/Inf in the latest row
+- Structured logging via `logging.getLogger(__name__)`: logs input quality (NaN presence, row count), output summary (feature count, latest-row NaN columns)
+
+### Verification
+```bash
+uv run pytest tests/ -v              # 9 tests, all pass
+uv run python -c "from trading.features import FeatureEngine; print(len(FeatureEngine.list_features()))"  # → 21
+```
+
+### Test scenarios
+| Test | What it verifies |
+|---|---|
+| `test_rising_prices_rsi_high` | RSI > 70 for monotonic uptrend |
+| `test_falling_prices_rsi_low` | RSI < 30 for monotonic downtrend |
+| `test_constant_prices_returns_zero` | Flat prices → returns ≈ 0, volatility ≈ 0 |
+| `test_output_shape` | Correct columns, index preserved |
+| `test_list_features_matches_output` | 21 features, all subset of compute() output |
+| `test_validate_features_passes` | Valid df passes validation |
+| `test_validate_features_fails_missing_column` | Missing column → fail |
+| `test_validate_features_fails_nan_in_latest` | NaN in latest row → fail |
+| `test_missing_columns_raises` | compute() raises ValueError on bad input |
+
+### Design decisions
+- **21 not 20 features**: the original plan estimated 20; actual implementation is 21 (4 returns + 4 SMA + 2 EMA + 4 oscillators + 1 ATR + 3 volume + 3 volatility). `list_features()` and tests are self-consistent.
+- **Log-level checks not assertions**: logging calls are NOT asserted in tests (would couple tests to log format). Tests verify behavior (output values, validation results).
+- **``ta`` library for standard indicators**: switched from manual pandas formulas to the ``ta`` library (SMA/EMA/MACD/RSI/ATR) for financial correctness and fewer bugs. Returns, volume profile, and volatility remain custom pandas since ``ta`` has no direct equivalents.
+
+### Files
+- `backend/pyproject.toml` (+pandas, +numpy, +ta, +pytest dev dep)
+- `backend/src/trading/features/__init__.py`
+- `backend/src/trading/features/engine.py`
+- `backend/tests/__init__.py`
+- `backend/tests/test_features.py`
