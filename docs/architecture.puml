@@ -1,0 +1,377 @@
+@startuml
+' =============================================================================
+' Multi-Agent Trading System — Class Diagram
+' =============================================================================
+
+title Multi-Agent Trading System — Class Diagram
+
+' =============================================================================
+' ENUMS
+' =============================================================================
+
+package "Enums" {
+  enum SignalAction {
+    BUY
+    SELL
+    HOLD
+  }
+
+  enum OrderType {
+    MARKET
+    LIMIT
+    BRACKET
+  }
+
+  enum OrderStatus {
+    approved_pending_human
+    human_confirmed
+    sent_to_webull
+    filled
+    partially_filled
+    rejected
+    cancelled
+    failed
+  }
+
+  enum MessageStatus {
+    pending
+    processing
+    done
+    failed
+  }
+
+  enum AgentType {
+    ingestion
+    signal
+    risk
+    execution
+  }
+}
+
+' =============================================================================
+' DOMAIN ENTITIES (data that flows through the queue & DB)
+' =============================================================================
+
+package "Domain Entities" {
+  class OHLCV {
+    +ticker: str
+    +date: date
+    +open: float
+    +high: float
+    +low: float
+    +close: float
+    +volume: int
+  }
+
+  class Features {
+    +ticker: str
+    +date: date
+    +columns: dict[str, float]
+  }
+
+  class Signal {
+    +id: UUID
+    +ticker: str
+    +action: SignalAction
+    +quantity: int
+    +confidence: float
+    +strategy_id: str
+    +timestamp: datetime
+  }
+
+  class RiskDecision {
+    +signal_id: UUID
+    +passed: bool
+    +reject_reason: str?
+    +adjusted_quantity: int?
+    +position_check_pct: float
+    +sector_check_pct: float
+    +drawdown_check_pct: float
+  }
+
+  class OrderRequest {
+    +signal_id: UUID
+    +ticker: str
+    +action: SignalAction
+    +quantity: int
+    +order_type: OrderType
+    +limit_price: float?
+    +stop_loss: float?
+    +take_profit: float?
+  }
+
+  class OrderResult {
+    +id: UUID
+    +webull_order_id: str
+    +status: OrderStatus
+    +filled_quantity: int
+    +avg_fill_price: float?
+    +error_message: str?
+    +timestamp: datetime
+  }
+
+  class Position {
+    +ticker: str
+    +quantity: int
+    +avg_cost: float
+    +current_price: float
+    +market_value: float
+    +unrealized_pnl: float
+    +sector: str
+  }
+
+  class PortfolioState {
+    +total_value: float
+    +cash: float
+    +positions: list[Position]
+    +peak_nav: float
+    +drawdown_pct: float
+    +sector_exposure: dict[str, float]
+  }
+
+  class WatchlistItem {
+    +ticker: str
+    +sector: str
+    +added_date: date
+  }
+
+  class Message {
+    +id: UUID
+    +agent_type: AgentType
+    +strategy_id: str
+    +event_type: str
+    +payload: JSONB
+    +status: MessageStatus
+    +retries: int
+    +created_at: datetime
+    +processed_at: datetime?
+    +error: str?
+  }
+
+  class EventLog {
+    +id: UUID
+    +agent: AgentType
+    +event_type: str
+    +payload: JSONB
+    +created_at: datetime
+  }
+}
+
+' =============================================================================
+' DEEP MODULES (interfaces from PRD)
+' =============================================================================
+
+package "Deep Modules" {
+  class MessageQueue {
+    +enqueue(agent_type, strategy_id, event_type, payload): UUID
+    +dequeue(consumer_agent_type, limit): list[Message]
+    +ack(message_id): void
+    +nack(message_id, error): void
+    +requeue(message_id): void
+  }
+
+  class MarketData {
+    +fetch_daily(ticker, start_date, end_date): DataFrame
+    +cache_ohlcv(ticker, records): void
+    +get_cached(ticker, start_date, end_date): DataFrame
+  }
+
+  class FeatureEngine {
+    +compute(ohlcv_df: DataFrame): DataFrame
+    +list_features(): list[str]
+    +validate_features(df: DataFrame): void
+  }
+
+  class SignalModel {
+    +load(model_path: str): SignalModel
+    +predict(features_df: DataFrame): DataFrame
+    +validate(): bool
+    +model_info(): dict
+  }
+
+  class RiskEngine {
+    +evaluate(signal: Signal, portfolio: PortfolioState): RiskDecision
+    +add_rule(rule: RiskRule): void
+    +remove_rule(rule_name: str): void
+  }
+
+  class Broker {
+    +place_order(order: OrderRequest): OrderResult
+    +get_positions(): list[Position]
+    +get_account(): PortfolioState
+    +cancel_order(order_id: str): bool
+    +get_order_status(order_id: str): OrderResult
+  }
+}
+
+' =============================================================================
+' RISK RULES (strategy pattern inside RiskEngine)
+' =============================================================================
+
+package "Risk Rules" {
+  interface RiskRule {
+    +name: str
+    +check(signal: Signal, portfolio: PortfolioState): RuleResult
+  }
+
+  class RuleResult {
+    +passed: bool
+    +reason: str?
+    +adjusted_quantity: int?
+    +current_value: float
+    +limit_value: float
+  }
+
+  class PositionSizeRule {
+    +max_position_pct: float
+    +check(signal, portfolio): RuleResult
+  }
+
+  class SectorConcentrationRule {
+    +max_sector_pct: float
+    +ticker_sector_map: dict[str, str]
+    +check(signal, portfolio): RuleResult
+  }
+
+  class DrawdownRule {
+    +max_drawdown_pct: float
+    +check(signal, portfolio): RuleResult
+  }
+}
+
+' =============================================================================
+' AGENTS (processes)
+' =============================================================================
+
+package "Agents (Processes)" {
+  class DataIngestionAgent {
+    +run(): void
+    -fetch_watchlist(tickers): list[OHLCV]
+    -publish_market_data_updated(): void
+  }
+
+  class SignalAgent {
+    +run(): void
+    -load_model(): SignalModel
+    -generate_features(tickers): DataFrame
+    -run_inference(features): list[Signal]
+    -publish_signals(signals): void
+  }
+
+  class RiskAgent {
+    +run(): void
+    -load_portfolio(): PortfolioState
+    -evaluate_signal(signal): RiskDecision
+    -create_order(signal, decision): OrderRequest
+    -publish_approved_orders(orders): void
+  }
+
+  class ExecutionAgent {
+    +run(): void
+    -get_confirmed_orders(): list[OrderRequest]
+    -execute_order(order): OrderResult
+    -update_order_status(result): void
+    -publish_execution_result(result): void
+  }
+}
+
+' =============================================================================
+' API & FRONTEND
+' =============================================================================
+
+package "API Layer" {
+  class DashboardAPI {
+    +get_portfolio(): PortfolioState
+    +get_portfolio_history(days): list[PortfolioState]
+    +get_signals(date, status, ticker): list[Signal]
+    +get_orders(status): list[OrderRequest]
+    +confirm_order(order_id): void
+    +cancel_order(order_id): void
+    +retry_order(order_id): void
+    +get_agent_status(): dict
+    +get_events(agent, date): list[EventLog]
+  }
+
+  class PipelineWebSocket {
+    +connect(): WebSocket
+    +broadcast_event(event: EventLog): void
+    +broadcast_agent_status(agent, status): void
+  }
+}
+
+' =============================================================================
+' RELATIONSHIPS — Agents use Deep Modules
+' =============================================================================
+
+DataIngestionAgent ..> MarketData : uses
+DataIngestionAgent ..> MessageQueue : enqueues
+SignalAgent ..> FeatureEngine : uses
+SignalAgent ..> SignalModel : uses
+SignalAgent ..> MessageQueue : enqueues/dequeues
+RiskAgent ..> RiskEngine : uses
+RiskAgent ..> MessageQueue : enqueues/dequeues
+ExecutionAgent ..> Broker : uses
+ExecutionAgent ..> MessageQueue : enqueues/dequeues
+
+' =============================================================================
+' RELATIONSHIPS — Deep Modules produce/consume entities
+' =============================================================================
+
+MarketData ..> OHLCV : produces
+FeatureEngine ..> OHLCV : consumes
+FeatureEngine ..> Features : produces
+SignalModel ..> Features : consumes
+SignalModel ..> Signal : produces
+RiskEngine ..> Signal : consumes
+RiskEngine ..> RiskDecision : produces
+RiskEngine ..> PortfolioState : consumes
+Broker ..> OrderRequest : consumes
+Broker ..> OrderResult : produces
+Broker ..> Position : produces
+Broker ..> PortfolioState : produces
+
+MessageQueue ..> Message : manages
+
+' =============================================================================
+' RELATIONSHIPS — RiskEngine composes RiskRules
+' =============================================================================
+
+RiskEngine *--> RiskRule : strategies
+RiskRule <|.. PositionSizeRule : implements
+RiskRule <|.. SectorConcentrationRule : implements
+RiskRule <|.. DrawdownRule : implements
+RiskRule ..> RuleResult : produces
+
+' =============================================================================
+' RELATIONSHIPS — Entity relationships
+' =============================================================================
+
+Signal "1" -- "1" RiskDecision : evaluated by
+Signal "1" -- "0..1" OrderRequest : becomes
+OrderRequest "1" -- "1" OrderResult : results in
+PortfolioState "1" -- "*" Position : contains
+WatchlistItem "1" -- "*" OHLCV : generates data for
+
+' =============================================================================
+' RELATIONSHIPS — API / WebSocket
+' =============================================================================
+
+DashboardAPI ..> PortfolioState : serves
+DashboardAPI ..> Signal : serves
+DashboardAPI ..> OrderRequest : manages
+DashboardAPI ..> EventLog : reads
+DashboardAPI ..> MessageQueue : enqueues (confirm/retry)
+PipelineWebSocket ..> EventLog : broadcasts
+
+' =============================================================================
+' RELATIONSHIPS — Enums used by entities
+' =============================================================================
+
+Signal --> SignalAction : uses
+OrderRequest --> OrderType : uses
+OrderResult --> OrderStatus : uses
+Message --> MessageStatus : uses
+Message --> AgentType : uses
+EventLog --> AgentType : uses
+
+@enduml

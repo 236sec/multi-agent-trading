@@ -1,0 +1,21 @@
+watchlist:
+  - ticker: AAPL
+    sector: Technology
+  - ticker: JPM
+    sector: Financials
+
+risk:
+  max_position_pct: 0.20
+  max_sector_pct: 0.40
+  max_drawdown_pct: 0.15
+
+model:
+  path: models/signal_v1.pkl
+
+schedule:
+  data_ingestion_time: "16:30"
+  signal_time: "17:00"
+  risk_time: "17:30"
+
+broker:
+  mode: paper
