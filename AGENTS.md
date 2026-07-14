@@ -2,7 +2,7 @@
   be brief.
 - When talking to me, sacrifice grammar for the sake of concision
 - we split production to be in `frontend/` and `backend/` and for research ML models will be in `research/`
-- after finished each task should update to `PROJECT.md` with a summary of what was done and any relevant links to code or documentation.
+- after finished each task should update to `PROJECT.md` with a summary of what was done and the technical decisions made and why.
 
 # Next.js Agents
 

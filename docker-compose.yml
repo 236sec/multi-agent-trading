@@ -6,6 +6,7 @@ services:
       POSTGRES_USER: trading
       POSTGRES_PASSWORD: trading
       POSTGRES_DB: trading
+      TZ: UTC
     ports:
       - "5432:5432"
     volumes:
