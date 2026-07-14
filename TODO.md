@@ -40,7 +40,7 @@
 - Integration tests: cache hit/miss with mocked yfinance (httpx transport)
 - **Blocks**: 0.2
 
-### [ ] 1.3 — FeatureEngine module
+### [x] 1.3 — FeatureEngine module ✅ 2026-07-14
 - `backend/src/trading/features/engine.py`
 - `compute(ohlcv_df) → features_df`
 - Indicators: SMA, EMA, RSI, MACD, ATR, volume profile, returns, volatility
