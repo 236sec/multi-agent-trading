@@ -14,7 +14,7 @@
 - `backend/.env.example`, `backend/config.yaml`
 - Verify: `trading run signal` prints "not implemented", `trading serve` → `/health` returns ok
 
-### [ ] 0.2 — Database schema + migrations
+### [x] 0.2 — Database schema + migrations ✅ 2026-07-14
 - Docker Compose: PostgreSQL 16
 - Alembic init + migration for all 9 tables (SPEC.md schema)
 - SQLAlchemy models (`backend/src/trading/db/models.py`)
