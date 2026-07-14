@@ -76,7 +76,7 @@ uv run trading db --help            # shows seed + init commands
   - `engine.py` — `FeatureEngine` class: `compute(ohlcv_df) → features_df`, `list_features()`, `validate_features()`
   - `__init__.py` — exports FeatureEngine
 - 21 technical indicators computed from OHLCV: returns (4), SMA ratios (4), EMA ratios (2), RSI, MACD (3), ATR normalized, volume profile (3), annualized volatility (3)
-- All computation is pure pandas/numpy — zero external TA libraries
+- Core indicators (SMA, EMA, MACD, RSI, ATR) delegate to the ``ta`` library for correct financial formulas; returns, volume ratios, and volatility use pandas/numpy
 - Null/missing value handling: `min_periods` on all rolling windows propagates NaN safely; `validate_features()` rejects DataFrames with NaN/Inf in the latest row
 - Structured logging via `logging.getLogger(__name__)`: logs input quality (NaN presence, row count), output summary (feature count, latest-row NaN columns)
 
@@ -102,10 +102,10 @@ uv run python -c "from trading.features import FeatureEngine; print(len(FeatureE
 ### Design decisions
 - **21 not 20 features**: the original plan estimated 20; actual implementation is 21 (4 returns + 4 SMA + 2 EMA + 4 oscillators + 1 ATR + 3 volume + 3 volatility). `list_features()` and tests are self-consistent.
 - **Log-level checks not assertions**: logging calls are NOT asserted in tests (would couple tests to log format). Tests verify behavior (output values, validation results).
-- **No ta / ta-lib dependency**: all indicators computed with pandas rolling/ewm operations to keep the dependency footprint small and the code transparent.
+- **``ta`` library for standard indicators**: switched from manual pandas formulas to the ``ta`` library (SMA/EMA/MACD/RSI/ATR) for financial correctness and fewer bugs. Returns, volume profile, and volatility remain custom pandas since ``ta`` has no direct equivalents.
 
 ### Files
-- `backend/pyproject.toml` (+pandas, +numpy, +pytest dev dep)
+- `backend/pyproject.toml` (+pandas, +numpy, +ta, +pytest dev dep)
 - `backend/src/trading/features/__init__.py`
 - `backend/src/trading/features/engine.py`
 - `backend/tests/__init__.py`

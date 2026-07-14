@@ -1,4 +1,4 @@
-"""Tests for FeatureEngine — 20 technical indicators from OHLCV data."""
+"""Tests for FeatureEngine — 21 technical indicators from OHLCV data."""
 
 import numpy as np
 import pandas as pd
@@ -132,7 +132,7 @@ class TestStructure:
         )
 
     def test_list_features_matches_output(self, uptrend_df, engine):
-        """list_features() returns 20 items, all are subset of compute() columns."""
+        """list_features() returns 21 items, all are subset of compute() columns."""
         feature_list = engine.list_features()
         assert len(feature_list) == 21, (
             f"Expected 21 features, got {len(feature_list)}"

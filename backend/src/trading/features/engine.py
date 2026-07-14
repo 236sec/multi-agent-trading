@@ -1,7 +1,9 @@
 """Feature engineering for daily OHLCV data.
 
-Pure pandas/numpy — no external TA libraries. Computes 20 price/volume
-indicators for ML model input. Designed for both live agent and notebook usage.
+Uses the ``ta`` library (financial standards, well-tested) for core
+indicators (SMA, EMA, MACD, RSI, ATR). Returns, volume profile, and
+volatility are computed with pandas/numpy since ``ta`` has no equivalent.
+Designed for both live agent and notebook usage.
 """
 
 import logging
@@ -9,6 +11,7 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
+import ta
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,9 @@ class FeatureEngine:
         features = engine.compute(ohlcv_df)  # date-indexed, 5 cols
         ok, issues = FeatureEngine.validate_features(features)
 
-    All indicators are computed from scratch with configurable windows.
+    Core indicators (SMA, EMA, MACD, RSI, ATR) delegate to the ``ta``
+    library for correct financial formulas. Returns, volume ratios, and
+    volatility are computed with pandas/numpy.
     """
 
     # ── windows ─────────────────────────────────────────────────────
@@ -97,49 +102,35 @@ class FeatureEngine:
         for w in (5, 10, 20):
             df[f"returns_{w}d"] = close.pct_change(w)
 
-        # ── SMA ratios ──────────────────────────────────────────────
+        # ── SMA ratios (ta library) ─────────────────────────────────
         for w in self.SMA_WINDOWS:
-            sma = close.rolling(w, min_periods=w).mean()
+            sma = ta.trend.sma_indicator(close, window=w, fillna=False)
             df[f"sma_{w}"] = close / sma - 1.0
 
-        # ── EMA ratios ──────────────────────────────────────────────
+        # ── EMA ratios (ta library) ─────────────────────────────────
         for w in self.EMA_WINDOWS:
-            ema = close.ewm(span=w, min_periods=w, adjust=False).mean()
+            ema = ta.trend.ema_indicator(close, window=w, fillna=False)
             df[f"ema_{w}"] = close / ema - 1.0
 
-        # ── RSI (Wilder's smoothing) ────────────────────────────────
-        delta = close.diff()
-        gain = delta.clip(lower=0)
-        loss = (-delta).clip(lower=0)
-        avg_gain = gain.rolling(self.RSI_WINDOW, min_periods=self.RSI_WINDOW).mean()
-        avg_loss = loss.rolling(self.RSI_WINDOW, min_periods=self.RSI_WINDOW).mean()
-        rs = avg_gain / avg_loss.replace(0, np.nan)  # avoid div-by-zero
-        df["rsi"] = 100.0 - (100.0 / (1.0 + rs))
+        # ── RSI (ta library — Wilder's smoothing) ───────────────────
+        df["rsi"] = ta.momentum.rsi(close, window=self.RSI_WINDOW, fillna=False)
 
-        # ── MACD ────────────────────────────────────────────────────
-        ema_fast = close.ewm(
-            span=self.MACD_FAST, min_periods=self.MACD_FAST, adjust=False
-        ).mean()
-        ema_slow = close.ewm(
-            span=self.MACD_SLOW, min_periods=self.MACD_SLOW, adjust=False
-        ).mean()
-        df["macd"] = ema_fast - ema_slow
-        df["macd_signal"] = df["macd"].ewm(
-            span=self.MACD_SIGNAL, min_periods=self.MACD_SIGNAL, adjust=False
-        ).mean()
-        df["macd_hist"] = df["macd"] - df["macd_signal"]
+        # ── MACD (ta library) ───────────────────────────────────────
+        macd_obj = ta.trend.MACD(
+            close,
+            window_slow=self.MACD_SLOW,
+            window_fast=self.MACD_FAST,
+            window_sign=self.MACD_SIGNAL,
+            fillna=False,
+        )
+        df["macd"] = macd_obj.macd()
+        df["macd_signal"] = macd_obj.macd_signal()
+        df["macd_hist"] = macd_obj.macd_diff()
 
-        # ── ATR (normalized by close) ───────────────────────────────
-        prev_close = close.shift(1)
-        tr = pd.concat(
-            [
-                high - low,
-                (high - prev_close).abs(),
-                (low - prev_close).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-        atr_raw = tr.rolling(self.ATR_WINDOW, min_periods=self.ATR_WINDOW).mean()
+        # ── ATR normalized by close (ta library) ────────────────────
+        atr_raw = ta.volatility.average_true_range(
+            high, low, close, window=self.ATR_WINDOW, fillna=False
+        )
         df["atr"] = atr_raw / close
 
         # ── volume profile ──────────────────────────────────────────
